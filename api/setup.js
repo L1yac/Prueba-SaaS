@@ -30,11 +30,20 @@ module.exports = async function handler(req, res) {
 
   const supabase = getSupabase();
 
-  const { data: clinic, error } = await supabase
-    .from("clinics")
-    .upsert(clinicData, { onConflict: "ghl_location_id" })
-    .select()
-    .single();
+  console.log("SUPABASE_URL:", process.env.SUPABASE_URL);
+  console.log("KEY_START:", process.env.SUPABASE_SERVICE_KEY?.slice(0, 20));
+
+  let clinic, error;
+  try {
+    ({ data: clinic, error } = await supabase
+      .from("clinics")
+      .upsert(clinicData, { onConflict: "ghl_location_id" })
+      .select()
+      .single());
+  } catch (e) {
+    console.error("SUPABASE_CATCH:", e.message, e.cause?.message);
+    return res.status(500).json({ error: e.message, cause: e.cause?.message });
+  }
 
   if (error) return res.status(500).json({ error: error.message });
 
