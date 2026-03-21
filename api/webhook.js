@@ -181,7 +181,14 @@ async function handleInboundMessage(supabase, clinic, event) {
       decision.status_update = "AGENDADO";
     } else {
       console.error("Booking failed:", apptResult.data);
-      decision.message = "Hubo un problema al confirmar la cita. ¿Puedes intentarlo de nuevo?";
+      // Si el slot ya no está disponible, mostrar nuevos horarios
+      const slotsResult = await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, clinic.clinic_timezone || "Europe/Madrid");
+      const slots = ghl.extractSlots(slotsResult.data);
+      if (slots.length > 0) {
+        decision.message = "Ese horario ya no está disponible. Estos son los próximos horarios libres:\n\n" + ghl.formatSlotsMessage(slots).replace("Estos son los próximos horarios disponibles:\n\n", "");
+      } else {
+        decision.message = "Ese horario ya no está disponible. ¿Te puedo contactar cuando haya un hueco libre?";
+      }
     }
     decision.action = "send_message";
   }
