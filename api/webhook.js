@@ -168,9 +168,9 @@ async function handleInboundMessage(supabase, clinic, event) {
     console.log("FREE SLOTS RAW:", JSON.stringify(slotsResult).slice(0, 500));
     const slots = ghl.extractSlots(slotsResult.data);
     if (slots.length > 0) {
-      decision.message = (decision.message ? decision.message + " ||| " : "") + ghl.formatSlotsMessage(slots);
+      decision.message = ghl.formatSlotsMessage(slots);
     } else {
-      decision.message = (decision.message ? decision.message + " ||| " : "") + "En este momento no veo huecos disponibles. ¿Te contacto cuando haya uno?";
+      decision.message = "En este momento no veo huecos disponibles. ¿Te contacto cuando haya uno?";
     }
     decision.action = "send_message";
   }
