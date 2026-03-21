@@ -5,6 +5,7 @@
     "api/stats.js":         { "maxDuration": 15 },
     "api/setup.js":         { "maxDuration": 15 },
     "api/cron/reminders.js":{ "maxDuration": 60 },
-    "api/cron/recovery.js": { "maxDuration": 60 }
+    "api/cron/recovery.js": { "maxDuration": 60 },
+    "api/debug-slots.js":   { "maxDuration": 15 }
   }
 }
