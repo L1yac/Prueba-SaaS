@@ -158,18 +158,21 @@ async function handleInboundMessage(supabase, clinic, event) {
   }
 
   if (decision.action === "show_slots") {
-    const slotsResult = await ghl.getFreeSlots(
-      clinic.ghl_api_key,
-      clinic.ghl_calendar_id,
-      clinic.clinic_timezone || "Europe/Madrid"
-    );
+    const tz = clinic.clinic_timezone || "Europe/Madrid";
+    const slotsResult = decision.preferred_date
+      ? await ghl.getFreeSlotsByDate(clinic.ghl_api_key, clinic.ghl_calendar_id, decision.preferred_date, tz)
+      : await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, tz);
     const slots = ghl.extractSlots(slotsResult.data);
     if (slots.length > 0) {
-      const slotsMsg = ghl.formatSlotsMessage(slots);
-      decision.message = (decision.message ? decision.message + " ||| " : "") + slotsMsg;
+      decision.message = (decision.message ? decision.message + " ||| " : "") + ghl.formatSlotsMessage(slots);
     } else {
-      decision.message = (decision.message ? decision.message + " ||| " : "") + "En este momento no veo huecos disponibles. ¿Te parece si te contacto en cuanto haya uno?";
+      decision.message = (decision.message ? decision.message + " ||| " : "") + "En este momento no veo huecos disponibles. ¿Te contacto cuando haya uno?";
     }
+    decision.action = "send_message";
+  }
+
+  if (decision.action === "ask_availability") {
+    // Sara already generated a message asking when they can. Just send it.
     decision.action = "send_message";
   }
 
@@ -279,6 +282,7 @@ async function handleInboundMessage(supabase, clinic, event) {
   }
 
   // Update qualification
+  let qualificationUpdated = false;
   if (decision.qualification_updates) {
     const updates = Object.fromEntries(
       Object.entries(decision.qualification_updates).filter(([, v]) => v !== null && v !== undefined)
@@ -288,6 +292,26 @@ async function handleInboundMessage(supabase, clinic, event) {
         { lead_id: lead.id, ...updates },
         { onConflict: "lead_id" }
       );
+      qualificationUpdated = true;
+    }
+  }
+
+  // Sync qualification to GHL contact description
+  if (qualificationUpdated) {
+    const { data: q } = await supabase
+      .from("lead_qualification")
+      .select("*")
+      .eq("lead_id", lead.id)
+      .single();
+    if (q) {
+      const desc = [
+        q.treatment_type ? `Tratamiento: ${q.treatment_type}` : null,
+        q.insurance_name ? `Seguro: ${q.insurance_name}` : null,
+        q.urgency_score ? `Urgencia: ${q.urgency_score}/5` : null,
+        q.availability_notes ? `Disponibilidad: ${q.availability_notes}` : null,
+        q.price_objection ? `Objeción precio: sí` : null,
+      ].filter(Boolean).join(" | ");
+      await ghl.updateContact(clinic.ghl_api_key, contactId, { description: desc });
     }
   }
 }
