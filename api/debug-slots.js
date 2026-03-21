@@ -3,11 +3,13 @@ const ghl = require("../lib/ghl");
 
 module.exports = async function handler(req, res) {
   const supabase = getSupabase();
-  const { data: clinic } = await supabase
+  const { data: clinics, error: clinicError } = await supabase
     .from("clinics")
     .select("*")
-    .single();
+    .limit(1);
 
+  if (clinicError) return res.status(500).json({ error: clinicError.message });
+  const clinic = clinics?.[0];
   if (!clinic) return res.status(404).json({ error: "No clinic found" });
 
   const tz = clinic.clinic_timezone || "Europe/Madrid";
