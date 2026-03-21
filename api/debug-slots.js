@@ -5,12 +5,11 @@ module.exports = async function handler(req, res) {
   const supabase = getSupabase();
   const { data: clinics, error: clinicError } = await supabase
     .from("clinics")
-    .select("*")
-    .limit(1);
+    .select("*");
 
-  if (clinicError) return res.status(500).json({ error: clinicError.message });
-  const clinic = clinics?.[0];
-  if (!clinic) return res.status(404).json({ error: "No clinic found" });
+  if (clinicError) return res.status(500).json({ error: clinicError.message, detail: "clinic query failed" });
+  if (!clinics || clinics.length === 0) return res.status(404).json({ error: "No clinic found", detail: "clinics table is empty or inaccessible" });
+  const clinic = clinics[0];
 
   const tz = clinic.clinic_timezone || "Europe/Madrid";
   const slotsResult = await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, tz);
