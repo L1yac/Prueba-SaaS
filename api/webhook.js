@@ -153,6 +153,7 @@ async function handleInboundMessage(supabase, clinic, event) {
     const slotsResult = decision.preferred_date
       ? await ghl.getFreeSlotsByDate(clinic.ghl_api_key, clinic.ghl_calendar_id, decision.preferred_date, tz)
       : await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, tz);
+    console.log("FREE SLOTS RAW:", JSON.stringify(slotsResult).slice(0, 500));
     const slots = ghl.extractSlots(slotsResult.data);
     if (slots.length > 0) {
       decision.message = (decision.message ? decision.message + " ||| " : "") + ghl.formatSlotsMessage(slots);
