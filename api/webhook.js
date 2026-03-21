@@ -193,6 +193,50 @@ async function handleInboundMessage(supabase, clinic, event) {
     decision.action = "send_message";
   }
 
+  if (decision.action === "cancel_appointment") {
+    const { data: appt } = await supabase
+      .from("appointments")
+      .select("*")
+      .eq("lead_id", lead.id)
+      .eq("status", "scheduled")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (appt?.ghl_appointment_id) {
+      await ghl.cancelAppointment(clinic.ghl_api_key, appt.ghl_appointment_id);
+      await supabase.from("appointments").update({ status: "cancelled" }).eq("id", appt.id);
+    }
+    await supabase.from("leads").update({ status: "CALIFICADO" }).eq("id", lead.id);
+    decision.status_update = "CALIFICADO";
+    decision.action = "send_message";
+  }
+
+  if (decision.action === "reschedule_appointment") {
+    const { data: appt } = await supabase
+      .from("appointments")
+      .select("*")
+      .eq("lead_id", lead.id)
+      .eq("status", "scheduled")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (appt?.ghl_appointment_id) {
+      await ghl.cancelAppointment(clinic.ghl_api_key, appt.ghl_appointment_id);
+      await supabase.from("appointments").update({ status: "cancelled" }).eq("id", appt.id);
+    }
+    await supabase.from("leads").update({ status: "CALIFICADO" }).eq("id", lead.id);
+    decision.status_update = "CALIFICADO";
+    // Show new slots
+    const slotsResult = await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, clinic.clinic_timezone || "Europe/Madrid");
+    const slots = ghl.extractSlots(slotsResult.data);
+    if (slots.length > 0) {
+      decision.message = (decision.message ? decision.message + " ||| " : "") + ghl.formatSlotsMessage(slots);
+    }
+    decision.action = "send_message";
+  }
+
   if (decision.action === "handoff") {
     if (clinic.staff_phone) {
       // Notify staff via GHL message (to staff contact or internal note)
