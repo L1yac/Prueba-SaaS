@@ -8,6 +8,18 @@ const KNOWN_CALENDAR_ID = "QZGHjDImBS9mwcAWctO5";
 module.exports = async function handler(req, res) {
   const supabase = getSupabase();
 
+  // Register clinic if action=register
+  if (req.query.action === "register") {
+    const { data, error } = await supabase.from("clinics").upsert({
+      name: "Clinica Prueba Dentraia",
+      ghl_location_id: KNOWN_LOCATION_ID,
+      ghl_api_key: KNOWN_API_KEY,
+      ghl_calendar_id: KNOWN_CALENDAR_ID,
+      clinic_timezone: "Europe/Madrid",
+    }, { onConflict: "ghl_location_id" }).select().single();
+    return res.status(200).json({ registered: !!data, error: error?.message, clinic: data });
+  }
+
   // Test 1: get ALL clinics to see what's in the table
   const { data: allClinics, error: allError } = await supabase.from("clinics").select("id, name, ghl_location_id");
   const clinic = allClinics?.find(c => c.ghl_location_id === KNOWN_LOCATION_ID) || allClinics?.[0];
