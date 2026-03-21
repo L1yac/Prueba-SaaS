@@ -149,6 +149,17 @@ async function handleInboundMessage(supabase, clinic, event) {
     return;
   }
 
+  // Force show_slots if Sara is in CALIFICADO and invents specific times
+  if (lead.status === "CALIFICADO" && decision.action === "send_message") {
+    const inventedTime = /\b\d{1,2}:\d{2}\b/.test(decision.message || "");
+    const confirmingAppt = /(reservo|agend[oó]|cita.*confirm|confirm.*cita)/i.test(decision.message || "");
+    if (inventedTime || confirmingAppt) {
+      console.log("Sara invented a time in CALIFICADO — forcing show_slots");
+      decision.action = "show_slots";
+      decision.message = null;
+    }
+  }
+
   if (decision.action === "show_slots") {
     const tz = clinic.clinic_timezone || "Europe/Madrid";
     const slotsResult = decision.preferred_date
