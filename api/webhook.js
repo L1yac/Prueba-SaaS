@@ -197,15 +197,37 @@ async function handleInboundMessage(supabase, clinic, event) {
     return;
   }
 
-  // Force show_slots if Sara confirms a booking with invented time (not clinic hours info)
-  if (lead.status === "CALIFICADO" && decision.action === "send_message") {
-    const confirmingAppt = /(te reservo|te agendo|cita confirmada|queda.*\d{1,2}:\d{2}|a las \d{1,2}:\d{2}.*confirm)/i.test(decision.message || "");
-    if (confirmingAppt) {
-      console.log("Sara confirmed booking without show_slots — forcing show_slots");
+  // Force show_slots if lead is CALIFICADO and slots haven't been shown yet
+  if (lead.status === "CALIFICADO" && !["show_slots", "book_appointment", "ask_availability", "handoff", "unsubscribe", "wait"].includes(decision.action)) {
+    const slotsAlreadyShown = history?.some(m => m.direction === "outbound" && /\[\d{4}-\d{2}-\d{2}T/.test(m.message));
+    if (!slotsAlreadyShown) {
       decision.action = "show_slots";
       decision.message = null;
     }
   }
+
+  // Detect preferred day/time from user message for show_slots
+  if (decision.action === "show_slots" && !decision.preferred_date) {
+    const today = new Date();
+    const days = { lunes: 1, martes: 2, miércoles: 3, miercoles: 3, jueves: 4, viernes: 5, sábado: 6, sabado: 6, domingo: 0 };
+    for (const [name, dow] of Object.entries(days)) {
+      if (msgNorm.includes(name)) {
+        const d = new Date(today);
+        const diff = (dow - d.getDay() + 7) % 7 || 7;
+        d.setDate(d.getDate() + diff);
+        decision.preferred_date = d.toISOString().slice(0, 10);
+        break;
+      }
+    }
+    if (msgNorm.includes("mañana")) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + 1);
+      decision.preferred_date = d.toISOString().slice(0, 10);
+    }
+  }
+  // Detect time of day preference
+  const preferAfternoon = /(tarde|after)/i.test(msgNorm);
+  const preferMorning = /(mañana|morning)/i.test(msgNorm) && !msgNorm.includes("mañana por la mañana") === false;
 
   if (decision.action === "show_slots") {
     const tz = clinic.clinic_timezone || "Europe/Madrid";
@@ -216,8 +238,8 @@ async function handleInboundMessage(supabase, clinic, event) {
     if (decision.preferred_date && ghl.extractSlots(slotsResult.data).length === 0) {
       slotsResult = await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, tz);
     }
-    console.log("FREE SLOTS RAW:", JSON.stringify(slotsResult).slice(0, 500));
-    const slots = ghl.extractSlots(slotsResult.data);
+    const timeFilter = preferAfternoon ? "afternoon" : null;
+    const slots = ghl.extractSlots(slotsResult.data, 2, timeFilter);
     if (slots.length > 0) {
       const btnResult = await ghl.sendSlotsAsButtons(clinic.ghl_api_key, contactId, clinic.ghl_location_id, slots);
       if (btnResult.status === 200 || btnResult.status === 201) {
@@ -312,7 +334,7 @@ async function handleInboundMessage(supabase, clinic, event) {
     const slotsResult = await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, clinic.clinic_timezone || "Europe/Madrid");
     const slots = ghl.extractSlots(slotsResult.data);
     if (slots.length > 0) {
-      decision.message = (decision.message ? decision.message + " ||| " : "") + ghl.formatSlotsMessage(slots);
+      decision.message = ghl.formatSlotsMessage(slots);
     }
     decision.action = "send_message";
   }
