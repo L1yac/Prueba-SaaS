@@ -59,17 +59,8 @@ async function handleNewContact(supabase, clinic, event) {
     .select()
     .single();
 
-  const greeting = firstName ? ` ${firstName}` : "";
-  const msg = `¡Hola${greeting}! 👋 Soy Sara, la asistente de ${clinic.name}. Vi que te interesaste en nuestros servicios dentales. ¿Qué tratamiento estás buscando?`;
-
-  await ghl.sendMessage(clinic.ghl_api_key, contactId, clinic.ghl_location_id, msg);
-
-  await supabase.from("conversations").insert({
-    lead_id: lead.id,
-    direction: "outbound",
-    message: msg,
-    canal: "whatsapp",
-  });
+  // No proactive greeting here — Sara greets naturally on first InboundMessage
+  // This avoids double greeting from the ContactCreate + InboundMessage race condition
 }
 
 async function handleInboundMessage(supabase, clinic, event) {
