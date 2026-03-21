@@ -197,12 +197,11 @@ async function handleInboundMessage(supabase, clinic, event) {
     return;
   }
 
-  // Force show_slots if Sara is in CALIFICADO and invents specific times
+  // Force show_slots if Sara confirms a booking with invented time (not clinic hours info)
   if (lead.status === "CALIFICADO" && decision.action === "send_message") {
-    const inventedTime = /\b\d{1,2}:\d{2}\b/.test(decision.message || "");
-    const confirmingAppt = /(reservo|agend[oó]|cita.*confirm|confirm.*cita)/i.test(decision.message || "");
-    if (inventedTime || confirmingAppt) {
-      console.log("Sara invented a time in CALIFICADO — forcing show_slots");
+    const confirmingAppt = /(te reservo|te agendo|cita confirmada|queda.*\d{1,2}:\d{2}|a las \d{1,2}:\d{2}.*confirm)/i.test(decision.message || "");
+    if (confirmingAppt) {
+      console.log("Sara confirmed booking without show_slots — forcing show_slots");
       decision.action = "show_slots";
       decision.message = null;
     }
@@ -210,9 +209,13 @@ async function handleInboundMessage(supabase, clinic, event) {
 
   if (decision.action === "show_slots") {
     const tz = clinic.clinic_timezone || "Europe/Madrid";
-    const slotsResult = decision.preferred_date
+    let slotsResult = decision.preferred_date
       ? await ghl.getFreeSlotsByDate(clinic.ghl_api_key, clinic.ghl_calendar_id, decision.preferred_date, tz)
       : await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, tz);
+    // Fallback to 7-day range if no slots found for specific date
+    if (decision.preferred_date && ghl.extractSlots(slotsResult.data).length === 0) {
+      slotsResult = await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, tz);
+    }
     console.log("FREE SLOTS RAW:", JSON.stringify(slotsResult).slice(0, 500));
     const slots = ghl.extractSlots(slotsResult.data);
     if (slots.length > 0) {
