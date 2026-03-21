@@ -28,12 +28,16 @@ module.exports = async function handler(req, res) {
   // Test 2: slots with clinic data from Supabase (if found)
   let slotsFromSupabase = null;
   if (clinic) {
-    const r = await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, clinic.clinic_timezone || "Europe/Madrid");
+    const fullClinic = await supabase.from("clinics").select("ghl_api_key, ghl_calendar_id, clinic_timezone").eq("id", clinic.id).single();
+    const c = fullClinic.data;
+    const r = await ghl.getFreeSlots(c.ghl_api_key, c.ghl_calendar_id, c.clinic_timezone || "Europe/Madrid");
     slotsFromSupabase = {
       api_status: r.status,
-      extracted: ghl.extractSlots(r.data),
-      calendar_id_used: clinic.ghl_calendar_id,
-      api_key_prefix: clinic.ghl_api_key?.slice(0, 15),
+      api_error: r.data?.message || r.data,
+      calendar_id_used: c.ghl_calendar_id,
+      api_key_used: c.ghl_api_key,
+      same_as_hardcoded_key: c.ghl_api_key === KNOWN_API_KEY,
+      same_as_hardcoded_cal: c.ghl_calendar_id === KNOWN_CALENDAR_ID,
     };
   }
 
