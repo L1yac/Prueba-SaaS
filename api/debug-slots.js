@@ -2,10 +2,6 @@ const { getSupabase } = require("../lib/supabase");
 const ghl = require("../lib/ghl");
 
 module.exports = async function handler(req, res) {
-  if (req.query.secret !== process.env.SETUP_SECRET) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
   const supabase = getSupabase();
   const { data: clinic } = await supabase
     .from("clinics")
