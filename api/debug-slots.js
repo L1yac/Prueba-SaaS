@@ -1,28 +1,19 @@
-const { getSupabase } = require("../lib/supabase");
 const ghl = require("../lib/ghl");
 
 module.exports = async function handler(req, res) {
-  const supabase = getSupabase();
-  const { data: clinics, error: clinicError } = await supabase
-    .from("clinics")
-    .select("*");
+  // Use known values directly from Supabase screenshot
+  const apiKey = process.env.GHL_API_KEY_DEBUG || req.query.apikey;
+  const calendarId = "QZGHjDImBS9mwcAWctO5";
+  const tz = "Europe/Madrid";
 
-  if (clinicError) return res.status(500).json({ error: clinicError.message, supabase_url: process.env.SUPABASE_URL?.slice(0, 30) });
-  if (!clinics || clinics.length === 0) return res.status(404).json({
-    error: "No clinic found",
-    supabase_url: process.env.SUPABASE_URL?.slice(0, 30),
-    key_prefix: process.env.SUPABASE_SERVICE_KEY?.slice(0, 10),
-    rows_returned: clinics?.length,
-  });
-  const clinic = clinics[0];
+  if (!apiKey) {
+    return res.status(400).json({ error: "Pass ?apikey=YOUR_GHL_API_KEY in the URL" });
+  }
 
-  const tz = clinic.clinic_timezone || "Europe/Madrid";
-  const slotsResult = await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, tz);
+  const slotsResult = await ghl.getFreeSlots(apiKey, calendarId, tz);
 
   res.status(200).json({
-    clinic_name: clinic.name,
-    calendar_id: clinic.ghl_calendar_id,
-    timezone: tz,
+    calendar_id: calendarId,
     api_status: slotsResult.status,
     raw_response: slotsResult.data,
     extracted_slots: ghl.extractSlots(slotsResult.data),
