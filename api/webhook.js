@@ -132,6 +132,21 @@ async function handleInboundMessage(supabase, clinic, event) {
     content: m.message,
   }));
 
+  // Auto-book if user responds "1" or "2" to slot options
+  if (lead.status === "CALIFICADO" && !saraHint) {
+    const userReply = inboundMsg?.trim();
+    const recentSlotMsg = history?.slice().reverse().find(m =>
+      m.direction === "outbound" && /\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]/.test(m.message)
+    );
+    if (recentSlotMsg) {
+      const isoMatches = [...recentSlotMsg.message.matchAll(/\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]/g)];
+      let chosenSlot = null;
+      if (userReply === "1" && isoMatches[0]) chosenSlot = isoMatches[0][1];
+      if (userReply === "2" && isoMatches[1]) chosenSlot = isoMatches[1][1];
+      if (chosenSlot) saraHint = { type: "book_appointment", slot: chosenSlot };
+    }
+  }
+
   // Get qualification
   const { data: qualification } = await supabase
     .from("lead_qualification")
@@ -139,8 +154,41 @@ async function handleInboundMessage(supabase, clinic, event) {
     .eq("lead_id", lead.id)
     .single();
 
+  // Direct book if user picked slot 1 or 2
+  if (saraHint?.type === "book_appointment") {
+    const apptResult = await ghl.bookAppointment(clinic.ghl_api_key, {
+      calendarId: clinic.ghl_calendar_id,
+      locationId: clinic.ghl_location_id,
+      contactId,
+      startTime: saraHint.slot,
+      name: lead.name || "Lead",
+    });
+    let replyMsg;
+    if (apptResult.status === 200 || apptResult.status === 201) {
+      const d = new Date(saraHint.slot);
+      const dateStr = d.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Madrid" });
+      const timeStr = d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Madrid" });
+      replyMsg = `Perfecto, cita confirmada el ${dateStr} a las ${timeStr}. ¡Te esperamos!`;
+      await supabase.from("appointments").insert({
+        lead_id: lead.id, clinic_id: clinic.id,
+        ghl_appointment_id: apptResult.data?.id,
+        start_time: saraHint.slot,
+        end_time: new Date(new Date(saraHint.slot).getTime() + 30 * 60 * 1000).toISOString(),
+        status: "scheduled",
+      });
+      await supabase.from("leads").update({ status: "AGENDADO" }).eq("id", lead.id);
+    } else {
+      const slotsResult = await ghl.getFreeSlots(clinic.ghl_api_key, clinic.ghl_calendar_id, clinic.clinic_timezone || "Europe/Madrid");
+      const slots = ghl.extractSlots(slotsResult.data);
+      replyMsg = slots.length > 0 ? "Ese horario ya no está libre. " + ghl.formatSlotsMessage(slots) : "Ese horario ya no está libre. ¿Te contacto cuando haya uno?";
+    }
+    await ghl.sendMessage(clinic.ghl_api_key, contactId, clinic.ghl_location_id, replyMsg);
+    await supabase.from("conversations").insert({ lead_id: lead.id, direction: "outbound", message: replyMsg, canal: "whatsapp" });
+    return;
+  }
+
   // Ask Sara
-  const decision = await getSaraDecision(clinic, lead, qualification, conversationHistory, saraHint);
+  const decision = await getSaraDecision(clinic, lead, qualification, conversationHistory, typeof saraHint === "string" ? saraHint : null);
   console.log("Sara decision:", decision.action, "|", decision.reasoning);
 
   // Handle actions
@@ -168,7 +216,16 @@ async function handleInboundMessage(supabase, clinic, event) {
     console.log("FREE SLOTS RAW:", JSON.stringify(slotsResult).slice(0, 500));
     const slots = ghl.extractSlots(slotsResult.data);
     if (slots.length > 0) {
-      decision.message = ghl.formatSlotsMessage(slots);
+      const btnResult = await ghl.sendSlotsAsButtons(clinic.ghl_api_key, contactId, clinic.ghl_location_id, slots);
+      if (btnResult.status === 200 || btnResult.status === 201) {
+        // Buttons sent — store text version with ISOs in conversations for later booking lookup
+        const slotText = ghl.formatSlotsMessage(slots);
+        await supabase.from("conversations").insert({ lead_id: lead.id, direction: "outbound", message: slotText, canal: "whatsapp" });
+        decision.message = null;
+      } else {
+        // Fallback to text
+        decision.message = ghl.formatSlotsMessage(slots);
+      }
     } else {
       decision.message = "En este momento no veo huecos disponibles. ¿Te contacto cuando haya uno?";
     }
