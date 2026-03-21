@@ -8,12 +8,10 @@ const KNOWN_CALENDAR_ID = "QZGHjDImBS9mwcAWctO5";
 module.exports = async function handler(req, res) {
   const supabase = getSupabase();
 
-  // Test 1: query clinic same way as webhook
-  const { data: clinic, error: clinicError } = await supabase
-    .from("clinics")
-    .select("*")
-    .eq("ghl_location_id", KNOWN_LOCATION_ID)
-    .single();
+  // Test 1: get ALL clinics to see what's in the table
+  const { data: allClinics, error: allError } = await supabase.from("clinics").select("id, name, ghl_location_id");
+  const clinic = allClinics?.find(c => c.ghl_location_id === KNOWN_LOCATION_ID) || allClinics?.[0];
+  const clinicError = allError;
 
   // Test 2: slots with clinic data from Supabase (if found)
   let slotsFromSupabase = null;
@@ -35,8 +33,9 @@ module.exports = async function handler(req, res) {
   };
 
   res.status(200).json({
+    all_clinics_in_table: allClinics,
+    all_clinics_error: allError?.message,
     clinic_found: !!clinic,
-    clinic_error: clinicError?.message,
     clinic_calendar_id: clinic?.ghl_calendar_id,
     slots_from_supabase_data: slotsFromSupabase,
     slots_from_hardcoded: slotsFromHardcoded,
