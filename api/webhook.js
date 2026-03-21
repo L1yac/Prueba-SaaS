@@ -15,11 +15,12 @@ module.exports = async function handler(req, res) {
   try {
     const { type, locationId } = event;
 
-    const { data: clinic } = await supabase
+    const { data: clinics } = await supabase
       .from("clinics")
       .select("*")
       .eq("ghl_location_id", locationId)
-      .single();
+      .limit(1);
+    const clinic = clinics?.[0];
 
     if (!clinic) {
       console.error("Clinic not found for locationId:", locationId);
