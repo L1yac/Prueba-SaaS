@@ -106,6 +106,19 @@ async function handleInboundMessage(supabase, clinic, event) {
     return;
   }
 
+  // Keyword override for cancel/reschedule when lead has appointment
+  const msgNorm = inboundMsg?.trim().toLowerCase() || "";
+  const cancelKeywords = ["cancelar", "cancel", "anular", "no voy a ir", "no puedo ir", "no voy"];
+  const rescheduleKeywords = ["cambiar", "cambio", "reprogramar", "otra fecha", "otro día", "otro horario", "mover la cita"];
+  let saraHint = null;
+  if (lead.status === "AGENDADO") {
+    if (cancelKeywords.some((k) => msgNorm.includes(k))) {
+      saraHint = "cancel_appointment";
+    } else if (rescheduleKeywords.some((k) => msgNorm.includes(k))) {
+      saraHint = "reschedule_appointment";
+    }
+  }
+
   // Log inbound
   await supabase.from("conversations").insert({
     lead_id: lead.id,
@@ -135,7 +148,7 @@ async function handleInboundMessage(supabase, clinic, event) {
     .single();
 
   // Ask Sara
-  const decision = await getSaraDecision(clinic, lead, qualification, conversationHistory);
+  const decision = await getSaraDecision(clinic, lead, qualification, conversationHistory, saraHint);
   console.log("Sara decision:", decision.action, "|", decision.reasoning);
 
   // Handle actions
